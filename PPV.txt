@@ -1,0 +1,151 @@
+select update_dsr_views();
+
+drop view PPV_main_view;
+create or replace view PPV_main_view as(SELECT region, tt2.brand,
+    case when weekend_name ilike '%tahoe%' then 'Sacramento' || right(weekend_name,5) else weekend_name end as weekend_name,
+      country, "?Tier_num" , sum(quantity) as volume,
+               sum(non_converted_amount)  as revenue?
+, case when (start_date is not null) then cast(start_date as date) else purchase_date end as start_date2
+, case when (end_date is not null) then cast(end_date as date) else purchase_date end as end_date2,
+  sum(non_converted_amount)::numeric/sum(quantity) as average_price,
+  sum(quantity)/(cast(end_date as date) - cast(start_date as date)) as velocity,
+  base_price
+
+from tiff_table_2 tt2
+left join new_schema.tier_dico_2016_combined_2 td on (cast(purchase_date as date) between cast(td.start_date as date) and (cast(td.end_date as date) - interval 'days 1')
+and td.brand = tt2.brand and tt2.weekend_name ilike '%' || td.Event_Name || '%')
+  and td.event_year = tt2.event_year
+
+where tt2.event_year in ('2016','2017')
+and is_mvt = 1 --or (is_mvt2 = 1 and promo_code1 ilike any ('{"%vol%","%season%"}'))
+  --or (is_mvt2 = 1 and ticket_name ilike any ('{"%vol%","%onsite%"}')))
+and region not ILIKE 'APAC' and tt2.weekend_name not ilike '%open%'
+  and tt2.weekend_name not ilike '%mudderella%'
+  and purchase_date < current_date
+
+
+group by 1,2,3,4,5,8,9,12,TD.end_date, TD.start_date)
+
+  select update_dsr_views();
+
+drop view PPV_secondary_view;
+  create or replace view PPV_secondary_view as(SELECT region, tt2.brand,
+    case when weekend_name ilike '%tahoe%' then 'Sacramento' || right(weekend_name,5) else weekend_name end as weekend_name,
+      country, "?Tier_num" , sum(quantity) as volume,
+               sum(non_converted_amount)  as revenue?
+, case when (start_date is not null) then cast(start_date as date) else purchase_date end as start_date2
+, case when (end_date is not null) then cast(end_date as date) else purchase_date end as end_date2,
+  sum(non_converted_amount)::numeric/sum(quantity) as average_price,
+  sum(quantity)/(cast(end_date as date) - cast(start_date as date)) as velocity,
+  base_price,
+  case when (promo_code1 ilike '%vol%' or ticket_name ilike '%vol%') then 'volunteer'
+    when ticket_name ilike '%season%' then 'season pass'
+    when promo_code1 ilike any ('{"%rb%","%realb%","%tmuk%","%tmnam%","%tmge%","%tmde%"}') then 'charity'
+    when ticket_name ilike '%onsite%' then 'onsite'
+    else 'N/A' end as type_of_sale,
+    is_mvt
+
+from tiff_table_2 tt2
+left join new_schema.tier_dico_2016_combined_2 td on (cast(purchase_date as date) between cast(td.start_date as date) and (cast(td.end_date as date) - interval 'days 1')
+and td.brand = tt2.brand and tt2.weekend_name ilike '%' || td.Event_Name || '%')
+  and td.event_year = tt2.event_year
+
+where tt2.event_year in ('2016','2017')
+and (is_mvt = 1 or (is_mvt2 = 1 and promo_code1 ilike any ('{"%vol%","%season%","%rb%","%realb%","%tmuka%","%tmukb%","%tmukc%","%tmnam%"}'))
+  or (is_mvt2 = 1 and ticket_name ilike any ('{"%vol%","%onsite%"}')))
+  and ticket_category ilike '%participant%'
+and region not ILIKE 'APAC' and tt2.weekend_name not ilike '%open%'
+  and tt2.weekend_name not ilike '%mudderella%'
+  and purchase_date < current_date
+
+group by 1,2,3,4,5,8,9,12, 13,TD.end_date, TD.start_date, is_mvt)
+
+  select sum(quantity), sum(converted_amount), sum(converted_amount)/sum(quantity) as avgprice
+from tiff_table_2
+where  ticket_category ilike '%season%'
+
+
+  select update_dsr_views();
+drop view MBH_per_month_comparison;
+
+select brand, event_name, date_part('month', "end_date"::date) as PI_month
+from new_schema.tier_dico_2016_combined_2
+where event_year = 2016
+and  date_part('year', "end_date"::date) = 2016
+
+
+create or replace view PPV_30_60_90_view as (select region, brand, weekend_name, country, sum(quantity) as volume,
+    sum(non_converted_amount) as revenue,
+  case when (purchase_date >= current_date - interval '30 days') then '30D'
+    when (purchase_date >= current_date - interval '60 days') then '60D'
+    when (purchase_date >= current_date - interval '90 days') then '90D'
+    else 'ignore' end as interval_grouping,
+  max(purchase_date) as max_date, min(purchase_date) as min_date
+                                             from tiff_table_2
+where (is_mvt = 1 or (is_mvt2 = 1 and promo_code1 ilike any ('{"%vol%","%season%","%rb%","%realb%","%tmuka%","%tmukb%","%tmukc%","%tmnam%"}'))
+  or (is_mvt2 = 1 and ticket_name ilike any ('{"%vol%","%onsite%"}')))
+and region not ILIKE 'APAC' and weekend_name not ilike '%open%'
+and weekend_name not ilike '%mudderella%' and event_year = 2017
+  and purchase_date < current_date
+and purchase_date >= current_date - interval '90 days'
+group by 1,2,3,4,7)
+
+  drop view DSR_Charity
+
+create or replace view PPV_Corporate_Sales2 as(
+select sum(amount) as revenue, sum(number_of_tickets__c) as volume, event_year__c, salesforce.opportunity.brand__c,
+  case when weekend_name__c ilike '%tahoe%' then 'Sacramento%' || right(weekend_name__c,5)
+  else weekend_name__c end as weekend_name, closedate from salesforce.opportunity
+  where probability::float > 90 and event_year__c::integer in (2017,2016)
+  group by 3,4,5,6 )
+
+
+  create or replace view DSR_Charity2 as(
+select sum(non_converted_amount)::NUMERIC+sum(quantity)::NUMERIC*185 as revenue, sum(quantity) as volume, event_year, brand,
+  case when tiff_table_2.weekend_name ilike '%tahoe%' then 'Sacramento%' || right(weekend_name,5)
+  else weekend_name end as weekend_name, purchase_date
+  from tiff_table_2
+  where event_year::integer in (2017,2016) and promo_code1 ilike any ('{"%rb%","%realb%","%tmuka%","%tmukb%",
+                      "%tmukc%","%tmnam%", "%tmde%","%tmge%"}')
+    and is_mvt2 = 1
+  group by 3,4,5,6 )
+
+
+select update_dsr_views2();
+
+create or replace view PPV_OVERALL as(SELECT region, tt2.brand,
+    case when weekend_name ilike '%tahoe%' then 'Sacramento' || right(weekend_name,5) else weekend_name end as weekend_name,
+       sum(quantity) as volume,
+       sum(non_converted_amount)  as revenue?,
+  case when transfer_in is true then 1 else 0 end is_transfer_in,
+  case when transfer_out is true then 1 else 0 end is_transfer_out,
+  case when refunded is true then 1 else 0 end is_refund
+
+from tiff_table_2 tt2
+
+where tt2.event_year in ('2016','2017')
+and (is_mvt = 1 or is_acq = 1)
+and region not ILIKE 'APAC'
+
+  and purchase_date < current_date
+
+group by 1,2,3,6,7,8 )
+
+
+
+
+create or replace view PPV_TEST as(SELECT purchase_date, region, tt2.brand,
+    case when weekend_name ilike '%tahoe%' then 'Sacramento' || right(weekend_name,5) else weekend_name end as weekend_name,
+      country,  sum(quantity) as volume,
+               sum(non_converted_amount)  as revenue?
+,
+  sum(non_converted_amount)::numeric/sum(quantity) as average_price
+from tiff_table_2 tt2
+where tt2.event_year in ('2016','2017')
+and is_mvt = 1
+and region not ILIKE 'APAC' and tt2.weekend_name not ilike '%open%'
+  and tt2.weekend_name not ilike '%mudderella%'
+  and purchase_date < current_date
+
+
+group by 1,2,3,4,5)

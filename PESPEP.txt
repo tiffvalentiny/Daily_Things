@@ -1,0 +1,132 @@
+create or replace function update_pespep_views() returns void
+LANGUAGE plpgsql
+AS $$
+Begin
+
+  execute 'Create or replace VIEW PESPEP_MAIN_VIEW as( '||
+   ' select region, case when (tt2.event_year > 2016 and ticket_name ilike ''%tougher%'') then ''Tougher Mudder'' '||
+   '   else brand end as brand, '||
+   ' case when weekend_name ilike ''%tahoe%'' then ''Sacramento'' || right(weekend_name,5) '||
+  '  when weekend_name ilike ''%London South 2016%'' then ''London South 2 2016'' || right(weekend_name,5) '||
+  '  when weekend_name ilike ''%London West 2016%'' then ''London West 1 2016'' || right(weekend_name,5) '||
+   ' else weekend_name end as original_weekend_name, '||
+  ' '||
+  '  case when weekend_name ilike ''%tahoe%'' then ''Sacramento'' || right(weekend_name,5) '||
+  '  when weekend_name ilike ''%midlands%'' then ''Midlands'' || right(weekend_name,5) '||
+  '  when weekend_name ilike ''%London south%'' then ''London South'' || right(weekend_name,5) '||
+  '  when weekend_name ilike ''%London west%'' then ''London West'' || right(weekend_name,5) '||
+   ' else weekend_name end as cleaned_up_weekend_name, '||
+' '||
+ '   tt2.event_year, purchase_date, promo_code1, '||
+ '  purchase_year as origin_year, '||
+ '   sum(quantity) as volume, sum(converted_amount) as revenue, '||
+' '||
+'    case when (promo_code1 ilike any (''{"%moremud%","%momud%","%mud%"}'') ) then ''16Event'' '||
+'     when (promo_code1 ilike (''{"%2015%"}'')) then ''2015Event'' '||
+'     when (left(promo_code1,3) ilike ''TMH'') then ''Tough Mudder Half'' '||
+'     when (left(promo_code1,3) ilike ''RTM'') then ''Toughest Mudder'' '||
+'     when (left(promo_code1,3) ilike ''WTM'') then ''World''''s Toughest Mudder'' '||
+'      when (left(promo_code1,3) ilike ''TRM'') then ''Tougher Mudder'' '||
+'     when (left(promo_code1,2) ilike ''TM'') then ''Tough Mudder'' '||
+'      when (left(right(promo_code1,length(promo_code1)-8),3) ilike ''TMH'') then ''Tough Mudder Half'' '||
+'     when (left(right(promo_code1,length(promo_code1)-8),3) ilike ''RTM'') then ''Toughest Mudder'' '||
+'     when (left(right(promo_code1,length(promo_code1)-8),3) ilike ''WTM'') then ''World''''s Toughest Mudder'' '||
+'      when (left(right(promo_code1,length(promo_code1)-8),3) ilike ''TRM'') then ''Tougher Mudder'' '||
+'     when (left(right(promo_code1,length(promo_code1)-8),2) ilike ''TM'') then ''Tough Mudder'' '||
+'     when (left(right(promo_code1,length(promo_code1)-9),3) ilike ''TMH'') then ''Tough Mudder Half'' '||
+'     when (left(right(promo_code1,length(promo_code1)-9),3) ilike ''RTM'') then ''Toughest Mudder'' '||
+'     when (left(right(promo_code1,length(promo_code1)-9),3) ilike ''WTM'') then ''World''''s Toughest Mudder'' '||
+'      when (left(right(promo_code1,length(promo_code1)-9),3) ilike ''TRM'') then ''Tougher Mudder'' '||
+'     when (left(right(promo_code1,length(promo_code1)-9),2) ilike ''TM'') then ''Tough Mudder'' '||
+'     when promo_code1 is NULL then ''no code'' '||
+'    else ''2CHECK'' end as origin_type, '||
+'       origin , case when origin ilike ''%London West%'' then ''London West'' '||
+'      when origin ilike ''%London South%'' then ''London South'' else origin end as clean_origin, '||
+'      mini_code, origin_type as origin_2016_type , origin_name origin_2016_name , '||
+'   case when ticket_name ILIKE ''%FLEX%'' then ''FLEX'' '||
+'    else ''NOT FLEX'' end as FLEX_CHECK, '||
+'    repeater, '||
+'    case when ticket_name ilike ''%post%'' then ''post'' else ''not post'' end as is_post, '||
+'    ticket_name, '||
+'      case when origin_name ilike ''%London West%'' then ''London West 1'' '||
+'       when origin_name ilike ''%London South%'' then ''London South 2'' '||
+'        else origin_name end as clean_origin_2016_name, '||
+'      case when ticket_name ilike ''%tougher%'' then ''is_tougher'' else ''not_tougher'' end as is_tougher '||
+' from tiff_table_2 tt2 '||
+'  left join new_schema.pespep_code_origin on promo_code1 ilike ''%'' || mini_code || ''%'' '||
+ '  left join new_schema.pespep_code_data_last_year pp2 on promo_code1 ilike ''%'' || pp2.code || ''%'' '||
+ ' where (promo_code1 ilike any (''{"%5kTN%","%tm17%","%tmh17%","%tm18%","%tmh18%","%trm17%","%clvtm%","%moremud%","%mud%"}'') '||
+  ' or tt2.event_year = 2018 or (tt2.event_year = 2017 and purchase_year = 2016)) '||
+ ' and purchase_year in (''2016'',''2017'') and region != ''APAC'' '||
+  '  and purchase_date <= current_date - interval ''1 days'' '||
+  ' and is_acq = 1 '||
+ ' group by 1,2,3,4,5,6,7,8,11,12,13,14,15,16,17,18,19,20)';
+
+
+
+ Execute 'create or replace view pespep_actuals_16_17 as( '||
+' select REGION, case when (event_year > 2016 and ticket_name ilike ''%tougher%'') then ''Tougher Mudder'' '||
+   '   else brand end as brand, weekend_name, event_name, '||
+  ' sum(quantity) as total_count, '||
+  ' sum(quantity * Case when (repeater ilike ''%new%'') then 1 else 0 end) as new_count, '||
+  ' sum(quantity * Case when (repeater ilike ''%repeat%'') then 1 else 0 end) as repeat_count, '||
+ ' sum(converted_amount) as total_rev, '||
+ '  sum(converted_amount * Case when (repeater ilike ''%new%'') then 1 else 0 end) as new_rev, '||
+ '  sum(converted_amount * Case when (repeater ilike ''%repeat%'') then 1 else 0 end) as repeat_rev, '||
+' event_year, '||
+'  case when weekend_name ilike ''%tahoe%'' then ''Sacramento'' || right(weekend_name,5) '||
+ '   when weekend_name ilike ''%midlands%'' then ''Midlands'' || right(weekend_name,5) '||
+ '   when weekend_name ilike ''%London south%'' then ''London South'' || right(weekend_name,5) '||
+  '  when weekend_name ilike ''%London west%'' then ''London West'' || right(weekend_name,5) '||
+  '  else weekend_name end as cleaned_up_weekend_name '||
+' from public.tiff_table_2 '||
+' where is_mvt = 1 and event_year in (''2016'',''2017'')  and region != ''APAC'' '||
+ '  and purchase_date <= current_date - interval ''1 days'' '||
+ ' group by 1,2,3,4,11,12) ';
+
+execute 'create or replace view pespep_365_view as ( '||
+' with event_past as (select event_id, weekend_name as past_event_name, '||
+  '                  case when (event_year > 2016 and ticket_name ilike ''%tougher%'') then ''Tougher Mudder'' '||
+   '   else brand end as past_event_type, max(event_date) as past_start_date, '||
+' contact_id, ticket_type, region as past_event_region, event_year as past_event_year '||
+'from Tiff_Table_2 where event_date < now() and (event_year = 2017 or event_year = 2016) and is_mvt = 1 '||
+' group by 1,2,3,5,6,7,8 ) '||
+' select '||
+ ' case when pst.past_event_name ilike ''%tahoe%'' then ''Sacramento'' || right(pst.past_event_name,5) '||
+ '   when pst.past_event_name ilike ''%London South 2016%'' then ''London South 2 2016'' '||
+ '   when pst.past_event_name ilike ''%London West 2016%'' then ''London West 1 2016'' '||
+ '   else pst.past_event_name end as past_event_name, '||
+ ' case when pst.past_event_name ilike ''%tahoe%'' then ''Sacramento'' || right(pst.past_event_name,5) '||
+ '   when pst.past_event_name ilike ''%London South%'' then ''London South'' || right(pst.past_event_name,5) '||
+ '   when pst.past_event_name ilike ''%London West%'' then ''London West'' || right(pst.past_event_name,5) '||
+ '   else pst.past_event_name end as clean_past_event_name, '||
+ ' past_start_date, past_event_type, past_event_region, past_event_year, '||
+ ''||
+ ' weekend_name as new_event_name, '||
+ ' case when weekend_name ilike ''%tahoe%'' then ''Sacramento'' || right(weekend_name,5) '||
+ '   when weekend_name ilike ''%midlands%'' then ''Midlands'' || right(weekend_name,5) '||
+ '   when weekend_name ilike ''%London south%'' then ''London South'' || right(weekend_name,5) '||
+ '   when weekend_name ilike ''%London west%'' then ''London West'' || right(weekend_name,5) '||
+ '   else weekend_name end as cleaned_up_weekend_name, '||
+ ' case when (event_year > 2016 and ticket_name ilike ''%tougher%'') then ''Tougher Mudder'' '||
+ '     else brand end as brand, region as new_region, event_year as new_event_year '||
+ ' '||
+ ' , event_date as new_start_date, '||
+ ' purchase_date, repeater, sum(quantity) as volume, sum(converted_amount) as revenue '||
+' from Tiff_Table_2 main '||
+' join event_past pst on (pst.contact_id = main.contact_id and '||
+'  pst.past_start_date < main.purchase_date and pst.past_start_date + interval ''1 years'' > main.purchase_date) '||
+' where is_acq = 1 group by 1,2,3,4,5,6,7,8,9,10,11,12,13,14 )';
+
+execute 'create or replace view pespep_how_many_events as( '||
+ ' with prox1 as (SELECT person_id, '||
+ ' sum(quantity * (case when event_year = 2016  then 1 else 0 end ))  as how_many_16, '||
+ ' sum(quantity * (case when event_year = 2017 then 1 else 0 END))  as how_many_17 '||
+' from tiff_table_2 where '||
+ ' is_mvt =1 '||
+ ' group by 1) '||
+' select how_many_17, how_many_16, count(1) '||
+' from prox1 '||
+' group by 1,2 )';
+End;
+$$;

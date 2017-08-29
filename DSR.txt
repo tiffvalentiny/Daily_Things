@@ -1,0 +1,258 @@
+create or replace function update_dsr_views2() returns void
+LANGUAGE plpgsql
+AS $fun$
+Begin
+Execute 'Drop materialized View IF EXISTS tiff_table_2 CASCADE';
+Execute 'CREATE MATERIALIZED VIEW Tiff_Table_2 as (SELECT (oli.eventbritesync__grossamount__c) as ticket_gross,
+  oli.eventbritesync__eventid__c as event_id,
+  tm_event__c.name as event_name,
+ tm_event__c.weekend_name__c as weekend_name,
+  tm_event__c.country__c as country,
+  oli.eventbritesync__attendeecontact__c as contact_id,
+  convert_2_usd((oli.eventbritesync__grossamount__c - oli.eventbritesync__eventbritefee__c - oli.eventbritesync__paymentfee__c)::numeric,
+  oli.currencyisocode::varchar)::float8::numeric::money as converted_amount,
+  oli.eventbritesync__grossamount__c - oli.eventbritesync__eventbritefee__c - oli.eventbritesync__paymentfee__c as non_converted_amount,
+oli.eventbritesync__tickettype__c as ticket_type,
+is_acquisition(oli.id) is_acq, is_net_movement(oli.id) is_mvt, is_net_movement_2(oli.id) is_mvt2,
+ date_part(''month'',oli.eventbritesync__created__c ) as purchase_month,
+ date_part(''year'',oli.eventbritesync__created__c) as purchase_year,
+extract(doy from oli.eventbritesync__created__c  ) as purchase_day_of_year,
+ extract(dow from oli.eventbritesync__created__c) as purchase_day_of_week,
+ extract(YEAR from oli.eventbritesync__created__c) as purchase_day_year,
+ extract(QUARTER from oli.eventbritesync__created__c) as purchase_day_quarter,
+  cast(oli.eventbritesync__created__c  as date) as purchase_date, oli.oli_brand__c as brand,
+  oli.eventbritesync__created__c as purchase_time_date,
+  cast(tm_event__c.end_date_time__c as date) as event_date,
+ oli.oli_year__c::numeric as event_year,
+  tm_event__c.region__c as region,
+  oli.currencyisocode as currency,
+  oli.eventbritesync__paymentfee__c as eventbrite_payment_fee,
+  oli.eventbritesync__eventbritefee__c as eventbrite_fee,
+  oli.eventbritesync__quantity__c as quantity,
+  oli.ticket_category__c as ticket_category,
+  oli.repeater as repeater,
+  eventbritesync__refunded__c as refunded,
+ oli.eventbritesync__status__c as ticket_status,
+  oli.barcode_status__c AS barcode_status,
+  promo.eventbritesync__promotion__c as promo_code1,
+  ticket.name as ticket_name,
+  c.firstname as firstn,   c.nop_rtm__c as num_rtm, c.nop_tm__c as num_tm,
+  c.nop_tmh__c as num_tmh, c.nop_wtm__c as num_wtm  ,  c.lastname as lastn,
+  c.eb_attendee_gender__c as contact_gender, oli.eventbritesync__gender__c AS oli_gender,
+    age__c as contact_age, eventbritesync__age__c as oli_age,
+     email,
+ oli.isdeleted as isDeleted,
+  oli.transferred_in__c as transfer_in,
+  oli.transferred_out__c as transfer_out, c.id as person_id
+  , promo.discount_amount__c as discount_amount, promo.discount_percent__c as discount_percent,
+   ticket.eventbritesync__hidden__c as is_hidden
+from
+oli_destinations_with_repeaters oli
+ inner join salesforce.tm_event__c
+ on oli.eventbritesync_tough_mudder_event__c = salesforce.tm_event__c.id
+ inner join salesforce.eventbritesync__ticket_type__c ticket
+  on oli.eventbritesync__tickettype__c = ticket.id
+  inner join salesforce.contact c on oli.eventbritesync__attendeecontact__c = c.id
+  left join salesforce.eventbritesync__promotionalcode__c promo on oli.eventbritesync__promotionalcode__c = promo.id
+where  oli.oli_year__c in (''2015'',''2016'', ''2017'',''2018'') )';
+
+  --view1: for current month
+Execute 'create or replace view DSR_current_month_comparison as( ' ||
+ 'select region, brand, purchase_year, repeater, sum(quantity), '||
+  'sum(converted_amount) as converted_gross_amount, ' ||
+  ' case when (ticket_name ilike ''%tougher%'' and event_year > 2016) then ''Tougher'' ' ||
+   ' else ''Not Tougher'' end as is_Tougher, purchase_date,' ||
+   ' case when (promo_code1 ilike any (''{"%HOT25%","%sunshine25%", "%obstacle%", "%hindernis%", ' ||
+   ' "%sonne20%","%BLOCKNESS%","%Kong%","%ARCTIC%","%CLIFF%","%EVEREST%","%OBSTACLEWEEK%"}'')) then ''Month Promo'' '||
+   ' when (promo_code1 ilike any (''{"%5KFLASH%"}'')) then ''Flash Sale'' ' ||
+        ' when (ticket_name ilike any (''{"%3 MILLI%"}'')) then ''3MM'' '||
+  ' when (ticket_name ilike ''%first mud%'' then ''First Mud'' '||
+   '  when (promo_code1 ilike any (''{"%5kTN%","%tm17%","%tmh17%","%tm18%","%tmh18%","%trm17%","%clvtm%","%gettougher%"}'')) then ''PESPEP'' '||
+   ' when (promo_code1 ilike any (''{"%take%","%titan%", "%LITOUGH%","%STRONG%"}'')) then ''HUMP'' '||
+   '  else ''NROS'' end as status, event_year, promo_code1, ticket_name, country ' ||
+ ' from tiff_table_2 '||
+  'where (purchase_date between date_trunc(''month'',current_date) '||
+  'and current_date - interval ''1 days'' or ' ||
+  ' purchase_date between date_trunc(''month'', current_date - interval ''1 years'') '||
+  'and current_date - interval ''1 days'' - interval ''1 years'') ' ||
+  'and region != ''APAC'' ' ||
+  'and is_mvt = 1 ' ||
+  'and brand != '''' '||
+  'group by 1,2,3,4,7,8,9,10,11,12,13 order by 3,1,2)';
+
+  Execute 'CREATE OR REPLACE VIEW DSR_VIEW_AER AS( ' ||
+'SELECT BRAND,  region, weekend_name, max(event_date), purchase_year, purchase_month, ' ||
+  'case when (country ilike ''%united states%'' or country ilike ''%canada%'') then ''US/Canada'' ' ||
+  'else country end as country, ticket_category,  sum(quantity) as sales, ' ||
+'sum(converted_amount) as converted_gross_amount, ' ||
+    'case when (ticket_name ilike ''%tougher%'') then ''Tougher'' else ''Not Tougher'' end as is_Tougher , '||
+     ' case when (ticket_name ilike ''%first mud%'') then ''First Mud'' else ''Not First Mud'' end as is_Mud ' ||
+  'from tiff_table_2 ' ||
+  'where ((ticket_category ilike any (''{"%mini mudder%","%season%","%spectator%","%camping%","%regional%","%parking%"}'') ' ||
+  'and is_mvt2  = 1 ) or ' ||
+  '(ticket_name ilike any (''{"%tougher%","%first mud%"}'') and is_mvt = 1)) ' ||
+  'and event_year = 2017 and purchase_date <= current_date - interval ''1 days'' ' ||
+  'and region != ''APAC'' ' ||
+  'group by 1,2,3,5,6,7,8,11,12) ' ;
+
+  --view2: for STD ly and this year
+  Execute  'create or replace view DSR_by_event_2 as(' ||
+  'select region, brand, event_name as new_event_name, weekend_name, event_year, MAX(event_date), '||
+   'sum(quantity) as volume, '||
+   'sum(quantity * Case when (repeater ilike ''%new%'') then 1 else 0 end) as new_count, '||
+   'sum(quantity * Case when (repeater ilike ''%repeat%'') then 1 else 0 end) as repeat_count, '||
+   'sum(converted_amount) as revenue, '||
+   'sum(converted_amount * Case when (repeater ilike ''%new%'') then 1 else 0 end) as new_rev, '||
+   'sum(converted_amount * Case when (repeater ilike ''%repeat%'') then 1 else 0 end) as repeat_rev, '||
+   'purchase_month, purchase_year,'||
+   'case when (ticket_name ilike ''%tougher%'' and event_year > 2016 ) then ''Tougher'' '||
+   'else ''Not Tougher'' end as is_Tougher '||
+'from tiff_table_2 ' ||
+'  where event_year in (''2016'',''2017'') ' ||
+'and region != ''APAC'' '||
+'and repeater ilike any (''{"%New%", "%Repeat%"}'') ' ||
+   'and ((event_year >= 2017) or ' ||
+' purchase_date <= current_date - interval ''1 days'' - interval ''1 years'') '||
+'and is_mvt = 1 and purchase_date <= current_date - interval ''1 days'' '||
+'group by 1,2,3,4,5,13,14,15)';
+
+ execute 'create or replace view PPV_Corporate_Sales as( '||
+' select sum(amount) as revenue, sum(number_of_tickets__c) as volume, event_year__c, salesforce.opportunity.brand__c, '||
+ ' case when weekend_name__c ilike ''%tahoe%'' then ''Sacramento%'' || right(weekend_name__c,5) '||
+ ' else weekend_name__c end as weekend_name, createddate, closedate, date_part(''month'',closedate) as purchase_month '||
+', date_part(''year'',closedate) as purchase_year, currencyisocode  from salesforce.opportunity '||
+'  where probability::float > 90 and event_year__c::integer in (2016,2017) and currencyisocode not ilike ''AUD'' '||
+'  group by 3,4,5,6,7,8,9,10 )';
+
+
+  Execute 'create or replace view DSR_Charity as( '||
+' select sum(converted_amount) as revenue, sum(quantity) as volume, event_year, brand, '||
+ ' case when tiff_table_2.weekend_name ilike ''%tahoe%'' then ''Sacramento%'' || right(weekend_name,5) '||
+ ' else weekend_name end as weekend_name, purchase_date, purchase_month, purchase_year, country '||
+ ' from tiff_table_2 '||
+ ' where event_year::integer in (2016,2017) and promo_code1 ilike any (''{"%rb%","%realb%","%tmuka%", ' ||
+          ' "%tmde%","%tmukb%","%tmukc%","%tmnam%", "%tmge%"}'') '||
+ '   and is_mvt2 = 1 '||
+ ' group by 3,4,5,6,7,8,9 )';
+
+        Execute ' create or replace view Groupon_per_month as( '||
+' SELECT distinct   '||
+ ' case when ("Offer option" ilike ''%half%'') then ''Tough Mudder Half''  '||
+ ' when (deal ilike ''%mudderella%'') then ''Mudderella'' '||
+ ' when (deal ilike ''%Tough Mudder 5K%'') then ''Tough Mudder 5K'' '||
+  ' when (deal ilike ''%half%'' and deal not ilike ''% and %'') then ''Tough Mudder Half'' '||
+ ' else ''Tough Mudder'' end as brand, '||
+ ' date_part(''month'',cast("Purchased at" as date)) as purchase_month, '||
+ ' date_part(''year'',cast("Purchased at" as date)) as purchase_year, '||
+  ' date_part(''year'',expires::date) as event_year, '||
+  ' sum("Purchase price")*0.85 as revenue, '||
+  ' count(1) as volume, en.event_name2 as event_name,' ||
+' case when ( date_part(''month'',current_date - interval ''1 days'') = date_part(''month'',cast("Purchased at" as date)) ' ||
+' and date_part(''year'',current_date - interval ''1 days'') = date_part(''year'',expires::date)) then cast("Purchased at" as date)::text ' ||
+' else ''not this month'' end as is_month,  '||
+ ' cast("Purchased at" as date) as purchase_day '||
+' from new_schema.groupon_unclean '||
+' left join new_schema.event_names_1 en on deal ilike ''%'' || en.event_name1 || ''%'' '||
+' where status ilike ''%purchased%'' '||
+' group by 1,2,3,4,7,8,9)';
+
+   Execute  'create or replace view DSR_by_event_3 as(' ||
+  'select region, brand, event_name as new_event_name, weekend_name, event_year, MAX(event_date), '||
+   'sum(quantity) as volume, '||
+   'sum(quantity * Case when (repeater ilike ''%new%'') then 1 else 0 end) as new_count, '||
+   'sum(quantity * Case when (repeater ilike ''%repeat%'') then 1 else 0 end) as repeat_count, '||
+   'sum(converted_amount) as revenue, '||
+   'sum(converted_amount * Case when (repeater ilike ''%new%'') then 1 else 0 end) as new_rev, '||
+   'sum(converted_amount * Case when (repeater ilike ''%repeat%'') then 1 else 0 end) as repeat_rev, '||
+   'purchase_date, purchase_year,'||
+   'case when (ticket_name ilike ''%tougher%'' and event_year > 2016 ) then ''Tougher'' '||
+   'else ''Not Tougher'' end as is_Tougher '||
+'from tiff_table_2 ' ||
+'  where event_year >= 2016 ' ||
+'and region != ''APAC'' '||
+'and repeater ilike any (''{"%New%", "%Repeat%"}'') ' ||
+   'and ((event_year >= 2017) or ' ||
+' purchase_date <= current_date - interval ''1 days'' - interval ''1 years'') '||
+'and is_mvt = 1 and purchase_date <= current_date - interval ''1 days'' '||
+'group by 1,2,3,4,5,13,14,15)';
+
+--crosstab views:
+execute 'drop view dsr_per_day_volume';
+execute 'drop view dsr_per_day_revenue';
+
+  --
+PERFORM dsr_my_crosstab_volume($$ select purchaser_event_short, purchase_date, order_cnt from (
+  SELECT
+    concat(brand, ' ', weekend_name) as purchaser_event_short
+    ,sum(quantity) AS order_cnt
+    ,sum(converted_amount) as sales
+    ,to_char(purchase_date,'YYYY-MM-DD') as purchase_date
+    ,count(1) Over (PARTITION BY concat(brand, ' ', weekend_name)) as total_sales
+  FROM tiff_table_2
+  where
+   event_year = '2017' and is_mvt = 1
+  and purchase_date >= cast('01/01/2015' as date)
+  and purchase_date < current_date
+  GROUP BY
+    concat(brand, ' ', weekend_name),
+    to_char(purchase_date,'YYYY-MM-DD')
+) as orders order by 1 $$,
+$$
+Select distinct purchase_date as name from (
+ select concat(brand, ' ', weekend_name) as purchaser_event_short
+    ,count(1) AS order_cnt
+    ,sum(converted_amount) as sales
+    ,to_char(purchase_date,'YYYY-MM-DD') as purchase_date
+    ,count(1) Over (PARTITION BY concat(brand, ' ', weekend_name)) as total_sales
+  FROM tiff_table_2
+
+  WHERE event_year = '2017' and is_mvt = 1
+  and purchase_date >= cast('01/01/2015' as date)
+  and purchase_date < current_date
+  GROUP BY
+    concat(brand, ' ', weekend_name),
+    to_char(purchase_date,'YYYY-MM-DD')
+) as orders order by 1 $$,
+'NUMERIC(10,2)');
+
+--other mat:
+
+PERFORM dsr_my_crosstab_revenue($$ select purchaser_event_short, purchase_date, sales from (
+  SELECT
+    concat(brand, ' ', weekend_name) as purchaser_event_short
+    ,sum(quantity) AS order_cnt
+    ,sum(converted_amount::numeric(10,2)) as sales
+    ,to_char(purchase_date,'YYYY-MM-DD') as purchase_date
+    ,count(1) Over (PARTITION BY concat(brand, ' ', weekend_name)) as total_sales
+  FROM tiff_table_2
+  where
+   event_year = '2017' and is_mvt = 1
+  and purchase_date >= cast('01/01/2015' as date)
+  and purchase_date < current_date
+  GROUP BY
+    concat(brand, ' ', weekend_name),
+    to_char(purchase_date,'YYYY-MM-DD')
+) as orders order by 1 $$,
+$$
+Select distinct purchase_date as name from (
+ select concat(brand, ' ', weekend_name) as purchaser_event_short
+    ,count(1) AS order_cnt
+    ,sum(converted_amount) as sales
+    ,to_char(purchase_date,'YYYY-MM-DD') as purchase_date
+    ,count(1) Over (PARTITION BY concat(brand, ' ', weekend_name)) as total_sales
+  FROM tiff_table_2
+
+  WHERE event_year = '2017' and is_mvt = 1
+  and purchase_date >= cast('01/01/2015' as date)
+  and purchase_date < current_date
+  GROUP BY
+    concat(brand, ' ', weekend_name),
+    to_char(purchase_date,'YYYY-MM-DD')
+) as orders order by 1 $$,
+'NUMERIC(10,2)');
+
+  Execute 'create or replace view dsr_per_day_volume as (select * from dsr_crosstab_volume)';
+  Execute 'create or replace view dsr_per_day_revenue as (select * from dsr_crosstab_revenue)';
+End;
+$fun$;
+

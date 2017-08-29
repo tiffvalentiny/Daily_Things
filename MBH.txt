@@ -1,0 +1,61 @@
+create function update_mbh_views() returns void
+LANGUAGE plpgsql
+AS $$
+Begin
+  --view1: for current month
+
+ Execute 'create or replace view MBH_per_month_comparison as( ' ||
+ 'select region, purchase_year, purchase_month, purchase_date, repeater, sum(quantity) as volume, '||
+  'sum(converted_amount) as converted_gross_amount, sum(non_converted_amount) as non_converted_gross_amount, ' ||
+  ' case when (ticket_name ilike ''%tougher%'' and event_year > 2016) then ''Tougher Mudder'' ' ||
+   ' else brand end as brand, ' ||
+' event_year, country ' ||
+ ' from tiff_table_2 '||
+  'where ((event_year >= 2017 and purchase_date <= current_date - interval ''1 days'') '||
+  ' or ' ||
+  ' (event_year >= 2016  '||
+  'and purchase_date <= current_date - interval ''1 days'' - interval ''1 years'')) ' ||
+  'and region != ''APAC'' ' ||
+  'and is_mvt = 1 ' ||
+  'and brand != '''' '||
+  'group by 1,2,3,4,5,9,10,11 order by 3,1,2)';
+
+  Execute 'CREATE OR REPLACE VIEW MBH_VIEW_AER AS( ' ||
+'SELECT region, weekend_name,  purchase_year, purchase_month, event_year, ' ||
+  'case when (country ilike ''%united states%'' or country ilike ''%canada%'') then ''US/Canada'' ' ||
+  'else country end as country, ticket_category,  sum(quantity) as sales, ' ||
+'sum(converted_amount) as converted_gross_amount, sum(non_converted_amount) as non_converted, ' ||
+    'case when (ticket_name ilike ''%tougher%'') then ''Tougher Mudder'' else brand end as brand , '||
+     ' case when (ticket_name ilike ''%first mud%'') then ''First Mud'' else ''Not First Mud'' end as is_Mud ' ||
+  'from tiff_table_2 ' ||
+  'where ((ticket_category not ilike ''%participant%'' ' ||
+  'and is_mvt2  = 1 ) or ' ||
+  '(ticket_name ilike any (''{"%tougher%","%first mud%"}'') and is_mvt = 1)) ' ||
+  'and ((event_year >= 2017 and purchase_date <= current_date - interval ''1 days'') or  ' ||
+  ' (event_year >= 2016 and purchase_date <= current_date - interval ''1 years'' - interval ''1 days'')) '||
+          ' and region != ''APAC'' ' ||
+  'group by 1,2,3,4, 5,6,7,11,12) ' ;
+
+       Execute ' create or replace view Groupon_per_month as( '||
+' SELECT distinct   '||
+ ' case when ("Offer option" ilike ''%half%'') then ''Tough Mudder Half''  '||
+ ' when (deal ilike ''%mudderella%'') then ''Mudderella'' '||
+ ' when (deal ilike ''%Tough Mudder 5K%'') then ''Tough Mudder 5K'' '||
+  ' when (deal ilike ''%half%'' and deal not ilike ''% and %'') then ''Tough Mudder Half'' '||
+ ' else ''Tough Mudder'' end as brand, '||
+ ' date_part(''month'',cast("Purchased at" as date)) as purchase_month, '||
+ ' date_part(''year'',cast("Purchased at" as date)) as purchase_year, '||
+  ' date_part(''year'',expires::date) as event_year, '||
+  ' sum("Purchase price")*0.85 as revenue, '||
+  ' count(1) as volume, en.event_name2 as event_name,' ||
+' case when ( date_part(''month'',current_date - interval ''1 days'') = date_part(''month'',cast("Purchased at" as date)) ' ||
+' and date_part(''year'',current_date - interval ''1 days'') = date_part(''year'',expires::date)) then cast("Purchased at" as date)::text ' ||
+' else ''not this month'' end as is_month  '||
+' from new_schema.groupon_unclean_2 '||
+' left join new_schema.event_names_1 en on deal ilike ''%'' || en.event_name1 || ''%'' '||
+' where status ilike ''%purchased%'' '||
+' group by 1,2,3,4,7,8)';
+
+ End;
+$$;
+

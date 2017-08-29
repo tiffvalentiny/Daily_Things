@@ -1,0 +1,78 @@
+  select min(event_datE) as event_date, weekend_name, brand, repeater, sum(quantity) as volume , sum(converted_amount) as revenue
+from tiff_table_2
+where  is_mvt =1
+  and purchase_month = 6 and promo_code1 ilike '%take%'
+and event_year = 2017
+group by 4,2,3 order by 2,3,4,5
+
+  (
+    SELECT
+ min(event_date) as event_date, weekend_name, brand, min(purchase_date) as start_date,
+      date_Part('days', age( max(purchase_date), min(purchase_date))) + 1 as days_of_promo,
+      sum(quantity) as volume , sum(converted_amount) as revenue, date_part('month',age(min(event_date), min(purchase_date)))
+    as months_2_event, promo_code1
+from tiff_table_2
+where  is_mvt =1
+and (promo_code1 ilike '%take%' or
+ promo_code1 ilike any  (array[array(select '%' || codes || '%' from new_schema.hump_codes)]) )
+and event_year = 2017 --and event_name ilike '%western new%'
+group by 2,3, promo_code1 order by 5 ASC)
+
+select brand, weekend_name, sum(quantity)
+  from tiff_table_2
+  where (purchase_date between '8/14/2017'::date and '8/18/2017'::date AND
+  weekend_name ilike any ('{"%dallas%","%central flor%","%Wisco%","%houston%"}'))
+  or (purchase_date between '8/21/2017'::date and '8/25/2017'::date AND
+  weekend_name ilike any ('{"%missouri%","%tri-state%","%nashville%","%carolinas%"}'))
+  group by 1,2
+
+select brand, weekend_name, sum(quantity), sum(converted_amount)
+  from tiff_table_2
+  where event_name ILIKE '%SOUTH WEST%' and event_year = 2017
+  and is_mvt2 = 1
+  group by 1,2
+
+  select brand, weekend_name, sum(quantity), sum(converted_amount), is_mvt
+    from tiff_table_2
+  where brand ilike 'tough mudder half'
+  and event_name ilike '%dallas%'
+  group by 1,2,5
+
+  select region, purchase_month, purchase_year, sum(quantity) as volume, sum(converted_amount) as revenue_in_USD
+    from tiff_table_2
+  where purchase_year in (2016,2017)
+      and is_mvt =1
+  group by 1,2,3
+  order by 1,3,2 ASC
+
+
+  --average price up until now per event
+  --average target final price
+
+  SELECT  region, brand
+    , (sum((quantity) * case when ( eb_attendee_gender__c ILIKE
+    '%female%' or eb_attendee_gender__c ILIKE '%weiblich%') then 1 else 0 end)/sum(quantity))::decimal(5,2) as percent_fem,
+    (sum((quantity) * case when (eb_attendee_gender__c  ILIKE
+    'male' or eb_attendee_gender__c  ILIKE 'männlich') then 1 else 0 end)/sum(quantity))::decimal(5,2) as percent_male,
+    (sum((quantity) * case when (eb_attendee_gender__c  ILIKE
+    'other' or eb_attendee_gender__c  ILIKE 'sonstige') then 1 else 0 end)/sum(quantity))::decimal(5,2) as percent_other,
+    (sum((quantity) * case when (eb_attendee_gender__c  is null) then 1 else 0 end)/sum(quantity))::decimal(5,2) as percent_no_info
+    from tiff_table_2
+      where event_year = 2017 and is_mvt = 1
+and region not ilike 'APAC'
+  group by 1,2
+
+    SELECT  region, brand
+    , sum((quantity) * case when ( eb_attendee_gender__c ILIKE
+    '%female%' or eb_attendee_gender__c ILIKE '%weiblich%') then 1 else 0 end) as percent_fem,
+    sum((quantity) * case when (eb_attendee_gender__c  ILIKE
+    'male' or eb_attendee_gender__c  ILIKE 'männlich') then 1 else 0 end) as percent_male,
+    sum((quantity) * case when (eb_attendee_gender__c  ILIKE
+    'other' or eb_attendee_gender__c  ILIKE 'sonstige' or eb_attendee_gender__c is null) then 1 else 0 end) as percent_other,
+      sum(quantity)
+    from tiff_table_2
+      where event_year = 2017 and is_mvt = 1
+        and region ilike 'na' and brand ilike 'tough mudder half'
+and region not ilike 'APAC'
+  group by 1,2
+
